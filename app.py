@@ -35,8 +35,8 @@ st.markdown("### 🔧 Choose function")
 mode = st.radio(
     "Select one:",
     [
-        "1) Drop empty rows & duplicates",
-        "2) Drop empty rows & duplicates, then fill empties (strings → 'N/A', numerics → mean())",
+        "1) Remove blank rows and repeated rows",
+        "2) Remove blank & repeated rows, then fill missing data",
     ],
     index=0
 )
