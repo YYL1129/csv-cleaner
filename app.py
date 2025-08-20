@@ -8,70 +8,68 @@ st.set_page_config(page_title="CSV/Excel Cleaner", page_icon="🧽", layout="wid
 st.title("🧽 CSV/Excel Cleaner")
 
 st.write(
-    "Upload a CSV/XLSX/XLS file.\n"
-    "• Drop rows that are completely empty.\n"
-    "• Keep all columns (they will be filled, not dropped):\n"
-    "   – String columns → 'N/A'\n"
-    "   – Numeric columns → column mean\n"
-    "• Then drop duplicate rows.\n"
+    "Upload a CSV/XLSX/XLS file, choose a function, preview, then download."
 )
 
+# -------------------- File upload --------------------
 uploaded_file = st.file_uploader("Choose a CSV, XLSX, or XLS file", type=["csv", "xlsx", "xls"])
 
 def read_any_table(file) -> pd.DataFrame:
     name = file.name.lower()
-    # --- CSV ---
+    # CSV
     if name.endswith(".csv"):
         try:
             return pd.read_csv(file)
         except UnicodeDecodeError:
             file.seek(0)
             return pd.read_csv(file, encoding="latin-1")
-
-    # --- Excel (xlsx/xls) ---
-    # Try openpyxl (xlsx) first, then xlrd (xls)
+    # Excel (xlsx/xls)
     file.seek(0)
     try:
-        # If multiple sheets, let user select one
-        xls = pd.ExcelFile(file, engine="openpyxl")  # works for .xlsx
+        xls = pd.ExcelFile(file, engine="openpyxl")        # .xlsx
         sheet = st.selectbox("Select sheet", xls.sheet_names, index=0)
         return pd.read_excel(xls, sheet_name=sheet)
     except Exception:
         file.seek(0)
-        try:
-            xls = pd.ExcelFile(file, engine="xlrd")  # for legacy .xls
-            sheet = st.selectbox("Select sheet", xls.sheet_names, index=0)
-            return pd.read_excel(xls, sheet_name=sheet)
-        except Exception as e:
-            st.error(f"Could not read this Excel file. ({e})")
-            st.stop()
+        xls = pd.ExcelFile(file, engine="xlrd")            # legacy .xls
+        sheet = st.selectbox("Select sheet", xls.sheet_names, index=0)
+        return pd.read_excel(xls, sheet_name=sheet)
+
+# -------------------- Mode selection --------------------
+st.markdown("### 🔧 Choose function")
+mode = st.radio(
+    "Select one:",
+    [
+        "1) Drop empty rows & duplicates",
+        "2) Drop empty rows & duplicates, then fill empties (strings → 'N/A', numerics → mean())",
+    ],
+    index=0
+)
 
 if uploaded_file:
     df = read_any_table(uploaded_file)
     st.subheader("Original data (first 50 rows)")
     st.dataframe(df.head(50), use_container_width=True)
 
-    # 1) Drop rows that are all NaN
+    # --- Step 1: drop rows that are all NaN
     df_cleaned = df.dropna(how="all")
 
-    # 2) Fill per column
-    for col in df_cleaned.columns:
-        if is_string_dtype(df_cleaned[col]):
-            df_cleaned[col] = df_cleaned[col].fillna("N/A")
-        elif is_numeric_dtype(df_cleaned[col]):
-            mean_val = df_cleaned[col].mean()
-            df_cleaned[col] = df_cleaned[col].fillna(mean_val)
-        else:
-            # leave other dtypes (dates/booleans/etc.) as-is
-            pass
+    # --- Step 2: (optional) fill empties based on dtype
+    if mode.startswith("2)"):
+        for col in df_cleaned.columns:
+            if is_string_dtype(df_cleaned[col]):
+                df_cleaned[col] = df_cleaned[col].fillna("N/A")
+            elif is_numeric_dtype(df_cleaned[col]):
+                mean_val = df_cleaned[col].mean()
+                df_cleaned[col] = df_cleaned[col].fillna(mean_val)
+            else:
+                # leave other dtypes (dates/booleans) unchanged
+                pass
 
-    # 3) Drop duplicate rows
+    # --- Step 3: drop exact duplicate rows
     df_cleaned = df_cleaned.drop_duplicates()
 
-    st.subheader("Cleaned data (first 50 rows)")
-    st.dataframe(df_cleaned.head(50), use_container_width=True)
-
-    # Metrics
+    # ---- Metrics
     before_rows = len(df)
     after_rows = len(df_cleaned)
     removed_rows = before_rows - after_rows
@@ -79,11 +77,14 @@ if uploaded_file:
     after_na = int(df_cleaned.isna().sum().sum())
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Rows removed (duplicates/empty)", removed_rows)
-    c2.metric("Cells filled", before_na - after_na)
+    c1.metric("Rows removed (empty/duplicates)", removed_rows)
+    c2.metric("Cells filled", max(0, before_na - after_na))
     c3.metric("Final rows", after_rows)
 
-    # --- Downloads: CSV and Excel ---
+    st.subheader("Cleaned data (first 50 rows)")
+    st.dataframe(df_cleaned.head(50), use_container_width=True)
+
+    # -------------------- Downloads --------------------
     # CSV
     csv_bytes = df_cleaned.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -93,7 +94,6 @@ if uploaded_file:
         mime="text/csv",
         use_container_width=True
     )
-
     # Excel
     xbuf = io.BytesIO()
     with pd.ExcelWriter(xbuf, engine="openpyxl") as writer:
