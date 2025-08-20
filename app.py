@@ -1,6 +1,7 @@
 # app.py
 import io
 import pandas as pd
+from payment import render_paywall_and_check
 import streamlit as st
 from pandas.api.types import (
     is_numeric_dtype, is_object_dtype, is_string_dtype
@@ -89,16 +90,24 @@ if uploaded_file:
     st.subheader("📊 Cleaned data (first 50 rows)")
     st.dataframe(df_cleaned.head(50), use_container_width=True)
 
-    # 💾 Downloads
+    # ---- Downloads (gated by paywall) ----
+    can_download = render_paywall_and_check()
+
     csv_bytes = df_cleaned.to_csv(index=False).encode("utf-8")
-    st.download_button("💾 Download cleaned CSV", data=csv_bytes,
-                       file_name="cleaned.csv", mime="text/csv",
-                       use_container_width=True)
+    if can_download:
+        st.download_button("💾 Download cleaned CSV", data=csv_bytes,
+                        file_name="cleaned.csv", mime="text/csv",
+                        use_container_width=True)
+    else:
+        st.warning("Download is locked. Enter your access code in the sidebar to unlock.")
 
     xbuf = io.BytesIO()
     with pd.ExcelWriter(xbuf, engine="openpyxl") as wr:
         df_cleaned.to_excel(wr, index=False, sheet_name="cleaned")
-    st.download_button("💾 Download cleaned Excel (.xlsx)", data=xbuf.getvalue(),
-                       file_name="cleaned.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                       use_container_width=True)
+    if can_download:
+        st.download_button("💾 Download cleaned Excel (.xlsx)", data=xbuf.getvalue(),
+                        file_name="cleaned.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True)
+    else:
+        st.warning("Download is locked. Enter your access code in the sidebar to unlock.")
