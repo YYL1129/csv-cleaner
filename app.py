@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.title("CSV / Excel Cleaner 🧹✨")
+st.title("🧽 CSV / Excel Cleaner 🧹✨")
 st.write(
     "Upload your CSV or Excel file. Choose how you want it cleaned."
 )
