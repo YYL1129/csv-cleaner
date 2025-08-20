@@ -1,89 +1,100 @@
-import streamlit as st
+# app.py
+import io
 import pandas as pd
-
-st.title("🧽 CSV / Excel Cleaner 🧹✨")
-st.write(
-    "Upload your CSV or Excel file. Choose how you want it cleaned."
+import streamlit as st
+from pandas.api.types import (
+    is_numeric_dtype, is_object_dtype, is_string_dtype
 )
 
-uploaded_file = st.file_uploader("Choose a file", type=["csv", "xlsx", "xls"])
+st.set_page_config(page_title="CSV/Excel Cleaner", page_icon="🧽", layout="wide")
+st.title("🧽 CSV/Excel Cleaner 🧹✨")
+
+st.write("Upload CSV/XLSX/XLS, choose function, preview, download.")
+
+uploaded_file = st.file_uploader("Choose a CSV, XLSX, or XLS file", type=["csv","xlsx","xls"])
+
+def read_any_table(file) -> pd.DataFrame:
+    name = file.name.lower()
+    if name.endswith(".csv"):
+        try:
+            return pd.read_csv(file)
+        except UnicodeDecodeError:
+            file.seek(0); return pd.read_csv(file, encoding="latin-1")
+    file.seek(0)
+    try:
+        xls = pd.ExcelFile(file, engine="openpyxl")      # .xlsx
+        sheet = st.selectbox("Select sheet", xls.sheet_names, index=0)
+        return pd.read_excel(xls, sheet_name=sheet)
+    except Exception:
+        file.seek(0)
+        xls = pd.ExcelFile(file, engine="xlrd")          # .xls
+        sheet = st.selectbox("Select sheet", xls.sheet_names, index=0)
+        return pd.read_excel(xls, sheet_name=sheet)
+
+st.markdown("### 🔧 Choose function")
+mode = st.radio(
+    "Select one:",
+    [
+        "🧹 Basic Cleaning – Remove blank rows and repeated rows",
+        "✨ Smart Cleaning – Remove blank & repeated rows, then fill missing data",
+    ],
+    index=0
+)
 
 if uploaded_file:
-    # Load file
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+    df = read_any_table(uploaded_file)
+    st.subheader("Original data (first 50 rows)")
+    st.dataframe(df.head(50), use_container_width=True)
 
-    st.write("📄 Original data preview:", df.head())
+    # 1) Drop rows that are completely empty
+    df_cleaned = df.dropna(how="all")
 
-    # Radio button with plain labels
-    mode = st.radio(
-        "Select cleaning method:",
-        [
-            "🧹 Basic Cleaning – Remove blank rows and repeated rows",
-            "✨ Smart Cleaning – Remove blank & repeated rows, then fill missing data (text → N/A, numbers → average)"
-        ],
-        index=0
-    )
-
-    # Show example explanation
-    if mode.startswith("🧹"):
-        st.info("Example:\n\nBefore → Row 3 is completely empty, Row 5 is repeated\n\nAfter → These rows are removed ✅")
-        # Example mini table
-        example_before = pd.DataFrame({
-            "Name": ["Alice", None, "Bob", "Bob"],
-            "Age": [25, None, 30, 30]
-        })
-        example_after = example_before.dropna(how="all").drop_duplicates()
-        st.write("Before:", example_before)
-        st.write("After:", example_after)
-
-    if mode.startswith("✨"):
-        st.info("Example:\n\nBefore → Some cells are blank (Name, Age)\n\nAfter → Blank names filled with 'N/A', blank ages filled with column average ✅")
-        example_before = pd.DataFrame({
-            "Name": ["Alice", None, "Charlie"],
-            "Age": [25, None, 40]
-        })
-        example_after = example_before.copy()
-        example_after["Name"] = example_after["Name"].fillna("N/A")
-        example_after["Age"] = example_after["Age"].fillna(example_after["Age"].mean())
-        st.write("Before:", example_before)
-        st.write("After:", example_after)
-
-    # 🔧 Apply actual cleaning to uploaded file
-    df_cleaned = df.dropna(how="all")  # drop completely empty rows
-
-    if mode.startswith("🧹"):  # Basic
-        df_cleaned = df_cleaned.drop_duplicates()
-
-    elif mode.startswith("✨"):  # Smart
+    # 2) Filling (robust for text/object & numeric)
+    if mode.startswith("2)"):
         for col in df_cleaned.columns:
-            if pd.api.types.is_string_dtype(df_cleaned[col]):
-                df_cleaned[col] = df_cleaned[col].fillna("N/A")
+            # Treat blank/whitespace strings as missing
+            s = df_cleaned[col].replace(r'^\s*$', pd.NA, regex=True)
+
+            if is_numeric_dtype(s):
+                mean_val = pd.to_numeric(s, errors="coerce").mean()
+                if pd.isna(mean_val):
+                    mean_val = 0  # fallback when entire column is empty
+                df_cleaned[col] = s.fillna(mean_val)
+
+            elif is_string_dtype(s) or is_object_dtype(s):
+                df_cleaned[col] = s.fillna("N/A")
+
             else:
-                mean_val = df_cleaned[col].mean()
-                df_cleaned[col] = df_cleaned[col].fillna(mean_val)
-        df_cleaned = df_cleaned.drop_duplicates()
+                # leave other dtypes (dates/booleans) unchanged
+                df_cleaned[col] = s
 
-    # Show cleaned preview
-    st.write("✅ Cleaned data preview:", df_cleaned.head())
+    # 3) Drop exact duplicate rows
+    df_cleaned = df_cleaned.drop_duplicates()
 
-    # Download button
-    file_ext = "csv" if uploaded_file.name.endswith(".csv") else "xlsx"
-    if file_ext == "csv":
-        output = df_cleaned.to_csv(index=False).encode("utf-8")
-        mime = "text/csv"
-    else:
-        from io import BytesIO
-        output_stream = BytesIO()
-        df_cleaned.to_excel(output_stream, index=False, engine="xlsxwriter")
-        output = output_stream.getvalue()
-        mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    # Metrics
+    before_rows = len(df); after_rows = len(df_cleaned)
+    removed_rows = before_rows - after_rows
+    before_na = int(df.isna().replace(r'^\s*$', pd.NA, regex=True).sum().sum())
+    after_na = int(df_cleaned.isna().sum().sum())
 
-    st.download_button(
-        label=f"⬇️ Download cleaned {file_ext.upper()}",
-        data=output,
-        file_name=f"cleaned.{file_ext}",
-        mime=mime
-    )
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Rows removed (empty/duplicates)", removed_rows)
+    c2.metric("Cells filled", max(0, before_na - after_na))
+    c3.metric("Final rows", after_rows)
+
+    st.subheader("Cleaned data (first 50 rows)")
+    st.dataframe(df_cleaned.head(50), use_container_width=True)
+
+    # Downloads
+    csv_bytes = df_cleaned.to_csv(index=False).encode("utf-8")
+    st.download_button("💾 Download cleaned CSV", data=csv_bytes,
+                       file_name="cleaned.csv", mime="text/csv",
+                       use_container_width=True)
+
+    xbuf = io.BytesIO()
+    with pd.ExcelWriter(xbuf, engine="openpyxl") as wr:
+        df_cleaned.to_excel(wr, index=False, sheet_name="cleaned")
+    st.download_button("💾 Download cleaned Excel (.xlsx)", data=xbuf.getvalue(),
+                       file_name="cleaned.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       use_container_width=True)
