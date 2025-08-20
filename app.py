@@ -36,7 +36,7 @@ mode = st.radio(
     "Select one:",
     [
         "🧹 Basic Cleaning – Remove blank rows and repeated rows",
-        "✨ Smart Cleaning – Remove blank & repeated rows, then fill missing data (text → 'N/A', numbers → average)",
+        "✨ Smart Cleaning – Remove blank & repeated rows, then fill missing data",
     ],
     index=0
 )
