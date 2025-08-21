@@ -39,7 +39,7 @@ if uploaded_file:
         df_cleaned.dropna(how="all", inplace=True)
         df_cleaned.drop_duplicates(inplace=True)
 
-    elif mode == "✨ Smart Cleaning (Mean Fill) – Remove blanks, fill text → N/A, numbers → average":
+    elif mode == "✨ Smart Cleaning (Mean Fill) – Remove blanks, fill missing numbers with averages":
         df_cleaned.dropna(how="all", inplace=True)
         df_cleaned.drop_duplicates(inplace=True)
         for col in df_cleaned.columns:
@@ -48,7 +48,7 @@ if uploaded_file:
             else:
                 df_cleaned[col].fillna(df_cleaned[col].mean(), inplace=True)
 
-    elif mode == "🔢 Smart Cleaning (Zero Fill) – Remove blanks, fill text → N/A, numbers → 0":
+    elif mode == "🔢 Smart Cleaning (Zero Fill) – Remove blanks, replace missing with 0 for accuracy.":
         df_cleaned.dropna(how="all", inplace=True)
         df_cleaned.drop_duplicates(inplace=True)
         for col in df_cleaned.columns:
