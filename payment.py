@@ -16,7 +16,7 @@ def render_paywall_and_check():
         return True  # Paywall disabled
 
     # Auto pre-fill from ?code=XXXX in URL
-    qp = st.experimental_get_query_params()
+    qp = st.query_params
     prefill = (qp.get("code", [""])[0] or "").strip()
 
     with st.sidebar:
