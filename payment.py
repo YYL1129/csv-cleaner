@@ -1,3 +1,4 @@
+# payment.py
 import streamlit as st
 
 def get_pay_settings():
@@ -15,16 +16,20 @@ def render_paywall_and_check():
     if not cfg["PAYWALL_ENABLED"]:
         return True  # Paywall disabled
 
-    # Auto pre-fill from ?code=XXXX in URL
-    qp = st.query_params
-    prefill = (qp.get("code", [""])[0] or "").strip()
+    # --- Read ?code=... from URL (supports both old & new APIs) ---
+    # New API returns a string; old one returned a list.
+    qp = st.query_params  # replacement for deprecated experimental_get_query_params
+    raw = qp.get("code", "")
+    if isinstance(raw, list):
+        prefill = (raw[0] or "").strip()
+    else:
+        prefill = (raw or "").strip()
 
     with st.sidebar:
         st.header("🔑 Download access")
         code = st.text_input("Access code", value=prefill, type="password")
 
         auto = False
-        # Auto-unlock if ?code=XXXX matches
         if prefill and cfg["ACCESS_MODE"] == "code" and prefill == cfg["ACCESS_CODE"]:
             st.success("✅ Download unlocked (via purchase link).")
             st.session_state["unlocked"] = True
